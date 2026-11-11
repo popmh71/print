@@ -309,6 +309,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function
 function initials(n) { var p = String(n || '').trim().split(/\s+/); return (p[0] ? p[0].charAt(0) : '') + (p[1] ? p[1].charAt(0) : ''); }
 function firstName(n) { return String(n || '').trim().split(/\s+/).slice(0, 2).join(' '); }
 function fmtN(n) { return Number(n || 0).toLocaleString('en-US'); }
+function shCell(r) { return r.pages ? '<b>' + fmtN(r.sheets) + '</b><div class="hint" style="font-size:11px">' + fmtN(r.pages) + ' × ' + fmtN(r.copies) + '</div>' : '<span class="hint">—</span>'; }
 function errText(e) { return String((e && e.message) || e).replace(/^(Exception|Error):\s*/, ''); }
 function api(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
@@ -536,7 +537,7 @@ function viewHome() {
         return '<tr>' + (isStaff() ? '<td>' + esc(firstName(r.name)) + '</td>' : '') + '<td>' + esc(r.typeLabel) + '</td><td class="num">' + fmtN(r.copies) + '</td><td>' + pill(r.status) + '</td><td class="hint">' + esc(r.createdAt.slice(5)) + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty">لا توجد طلبات بعد</div>';
     var notes = isStaff()
-      ? items.filter(function (r) { return r.status !== 'تم'; }).slice(0, 5).map(function (r) { return note('#fff4e1', '#c27a00', I.clock, 'طلب جديد من ' + firstName(r.name), r.typeLabel + ' · ' + r.copies + ' نسخة', r.createdAt.slice(5, 10)); })
+      ? items.filter(function (r) { return r.status !== 'تم'; }).slice(0, 5).map(function (r) { return note('#fff4e1', '#c27a00', I.clock, 'طلب جديد من ' + firstName(r.name), r.typeLabel + ' · ' + r.copies + ' نسخة' + (r.pages ? ' · ' + fmtN(r.sheets) + ' ورقة' : ''), r.createdAt.slice(5, 10)); })
       : items.filter(function (r) { return r.status === 'تم'; }).slice(0, 5).map(function (r) { return note('#e6f6ec', '#1f9d55', I.check, 'تمت طباعة طلبك #' + r.id, r.typeLabel + ' · ' + r.copies + ' نسخة', (r.doneAt || '').slice(5, 10)); });
     $('hNotes').innerHTML = notes.length ? notes.join('') : '<li class="empty" style="justify-content:center;border:0">لا توجد تنبيهات جديدة</li>';
   }).catch(function (e) { if ($('hTable')) $('hTable').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; });
@@ -550,9 +551,9 @@ function drawHomeStats(s) {
   if (!$('hStats')) return;
   if (isAdmin() && S.monthRep) {
     var t = S.monthRep.totals;
-    $('hStats').innerHTML = qs('p', I.clock, fmtN(s.queueWait), 'بانتظار الطباعة') + qs('b', I.copies, fmtN(t.done), 'نسخ مطبوعة هذا الشهر') + qs('g', I.team, fmtN(t.teachers), 'معلم طلب هذا الشهر');
+    $('hStats').innerHTML = qs('p', I.clock, fmtN(s.queueWait), 'بانتظار الطباعة') + qs('b', I.copies, fmtN(t.sheetsDone), 'ورقة مطبوعة هذا الشهر') + qs('g', I.team, fmtN(t.teachers), 'معلم طلب هذا الشهر');
   } else if (isStaff()) {
-    $('hStats').innerHTML = qs('p', I.clock, fmtN(s.queueWait), 'طلب بالانتظار') + qs('b', I.copies, fmtN(s.copiesWait), 'نسخة مطلوبة') + qs('g', I.check, fmtN(s.mineDone), 'طلباتي المنجزة');
+    $('hStats').innerHTML = qs('p', I.clock, fmtN(s.queueWait), 'طلب بالانتظار') + qs('b', I.copies, fmtN(s.sheetsWait), 'ورقة مطلوبة') + qs('g', I.check, fmtN(s.mineDone), 'طلباتي المنجزة');
   } else {
     $('hStats').innerHTML = qs('p', I.clock, fmtN(s.mineWait), 'قيد الانتظار') + qs('g', I.check, fmtN(s.mineDone), 'تمت طباعتها') + qs('b', I.copies, fmtN(s.mineWait + s.mineDone), 'إجمالي طلباتي');
   }
@@ -562,14 +563,16 @@ function drawHomeStats(s) {
 /* ================= طلب جديد ================= */
 function viewUpload() {
   S.file = null; S.type = null;
-  page('upload', pageHead(A.upload, 'طلب طباعة جديد', 'ارفع ملف PDF وحدد نوعه وعدد النسخ') +
+  page('upload', pageHead(A.upload, 'طلب طباعة جديد', 'ارفع ملف PDF وحدد نوعه وعدد أوراقه وعدد النسخ') +
     '<form id="fUp"><div class="up-grid"><div class="card panel">' +
     '<div class="drop" id="drop">' + A.upload + '<b id="fName">اضغط لاختيار ملف PDF أو اسحبه هنا</b><span class="hint" id="fSz">الحد الأقصى ' + MAX_MB + ' ميجابايت</span></div>' +
     '<input type="file" id="fIn" accept="application/pdf,.pdf" class="hidden">' +
     '<div class="field" style="margin-top:16px"><label>نوع الملف</label><div class="types">' +
     FILE_TYPES.map(function (t) { return '<button type="button" class="type" data-ty="' + esc(t) + '">' + (TYPE_A[t] || TYPE_A['أخرى']) + '<span>' + esc(t) + '</span></button>'; }).join('') + '</div></div>' +
     '<div class="field hidden" id="oWrap"><div class="ctl"><input id="oText" maxlength="200" placeholder="اكتب نوع الملف..."></div></div></div>' +
-    '<div class="card panel"><div class="field"><label>عدد النسخ</label><div class="stepper"><button type="button" id="cMinus">−</button><input id="copies" type="number" min="1" max="2000" value="1" inputmode="numeric"><button type="button" id="cPlus">+</button></div></div>' +
+    '<div class="card panel"><div class="field"><label>عدد أوراق الملف</label><div class="stepper"><button type="button" id="pMinus">−</button><input id="pages" type="number" min="1" max="5000" placeholder="—" inputmode="numeric"><button type="button" id="pPlus">+</button></div><span class="hint" id="pHint" style="display:block;margin-top:6px">يُحسب تلقائياً عند اختيار الملف، ويمكنك تعديله</span></div>' +
+    '<div class="field"><label>عدد النسخ</label><div class="stepper"><button type="button" id="cMinus">−</button><input id="copies" type="number" min="1" max="2000" value="1" inputmode="numeric"><button type="button" id="cPlus">+</button></div></div>' +
+    '<div class="field" id="shTot" style="background:#eef5ff;border-radius:12px;padding:10px 14px;font-weight:700;color:var(--blue2)">إجمالي الأوراق: —</div>' +
     '<div class="field"><label for="notes">ملاحظات للفني (اختياري)</label><div class="ctl"><textarea id="notes" maxlength="500" placeholder="مثال: وجهين، تدبيس، حجم A3..."></textarea></div></div>' +
     '<button class="btn ok block" id="bUp">' + I.check + ' إرسال الطلب</button><div id="mUp" class="msg"></div></div></div></form>');
   var drop = $('drop'), inp = $('fIn');
@@ -586,19 +589,24 @@ function viewUpload() {
       if (S.type === 'أخرى') $('oText').focus();
     };
   });
-  var c = $('copies');
-  on('cMinus', 'click', function () { c.value = Math.max(1, (+c.value || 1) - 1); });
-  on('cPlus', 'click', function () { c.value = Math.min(2000, (+c.value || 0) + 1); });
+  var c = $('copies'), pg = $('pages');
+  on('cMinus', 'click', function () { c.value = Math.max(1, (+c.value || 1) - 1); upTot(); });
+  on('cPlus', 'click', function () { c.value = Math.min(2000, (+c.value || 0) + 1); upTot(); });
+  on('pMinus', 'click', function () { pg.value = Math.max(1, (+pg.value || 1) - 1); upTot(); });
+  on('pPlus', 'click', function () { pg.value = Math.min(5000, (+pg.value || 0) + 1); upTot(); });
+  on('copies', 'input', upTot); on('pages', 'input', upTot);
   on('fUp', 'submit', function (e) {
     e.preventDefault();
     if (!S.file) return msg('mUp', 'اختر ملف PDF أولاً.');
     if (!S.type) return msg('mUp', 'اختر نوع الملف.');
     if (S.type === 'أخرى' && !$('oText').value.trim()) return msg('mUp', 'اكتب نوع الملف.');
+    if (!(+pg.value >= 1 && +pg.value <= 5000)) return msg('mUp', 'اكتب عدد أوراق الملف.');
+    if (!(+c.value >= 1 && +c.value <= 2000)) return msg('mUp', 'عدد النسخ يجب أن يكون بين 1 و 2000.');
     var b = $('bUp');
     busy(b, function () {
       b.innerHTML = 'جارٍ الرفع...';
       return readB64(S.file).then(function (b64) {
-        return api('uploadRequest', S.token, { fileName: S.file.name, base64: b64, type: S.type, otherText: $('oText').value, copies: c.value, notes: $('notes').value });
+        return api('uploadRequest', S.token, { fileName: S.file.name, base64: b64, type: S.type, otherText: $('oText').value, copies: c.value, pages: pg.value, notes: $('notes').value });
       }).then(function (r) { toast('تم إرسال الطلب رقم ' + r.id); viewMine(); })
         .catch(function (err) { msg('mUp', err.message); b.innerHTML = I.check + ' إرسال الطلب'; });
     });
@@ -611,6 +619,50 @@ function pick(f) {
   S.file = f; $('mUp').className = 'msg';
   $('drop').classList.add('has');
   $('fName').textContent = f.name; $('fSz').textContent = (f.size / 1048576).toFixed(1) + ' MB — اضغط للتغيير';
+  var pg = $('pages'), h = $('pHint');
+  pg.value = ''; upTot(); h.textContent = 'جارٍ حساب عدد الأوراق...';
+  countPages(f).then(function (n) {
+    if (S.file !== f || !$('pages')) return;
+    if (n > 0) { pg.value = n; h.textContent = 'تم حسابه تلقائياً من الملف (' + n + ' صفحة) — يمكنك تعديله'; }
+    else h.textContent = 'تعذّر حسابه تلقائياً — اكتب عدد أوراق الملف';
+    upTot();
+  });
+}
+function upTot() {
+  var el = $('shTot'); if (!el) return;
+  var p = +$('pages').value || 0, c = +$('copies').value || 0;
+  el.innerHTML = 'إجمالي الأوراق: ' + (p && c ? fmtN(p) + ' ورقة × ' + fmtN(c) + ' نسخة = <span style="font-size:20px">' + fmtN(p * c) + '</span> ورقة' : '—');
+}
+/* حساب صفحات PDF: مكتبة pdf.js، ثم قراءة مباشرة للملف كخطة بديلة */
+var PDFJS_V = '3.11.174', pdfjsP = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (pdfjsP) return pdfjsP;
+  pdfjsP = new Promise(function (res, rej) {
+    var sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + PDFJS_V + '/pdf.min.js';
+    sc.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + PDFJS_V + '/pdf.worker.min.js'; res(window.pdfjsLib); };
+    sc.onerror = function () { pdfjsP = null; rej(new Error('pdfjs')); };
+    document.head.appendChild(sc);
+  });
+  return pdfjsP;
+}
+function countPages(f) {
+  return f.arrayBuffer().then(function (buf) {
+    var copy = buf.slice(0);
+    return loadPdfJs().then(function (lib) {
+      return lib.getDocument({ data: new Uint8Array(copy) }).promise.then(function (d) { var n = d.numPages; d.destroy(); return n; });
+    }).catch(function () { return rawCount(buf); });
+  }).catch(function () { return 0; });
+}
+function rawCount(buf) {
+  var b = new Uint8Array(buf), t = '', i, max = 0, m;
+  for (i = 0; i < b.length; i += 65536) t += String.fromCharCode.apply(null, b.subarray(i, i + 65536));
+  var re = /\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages\b/g;
+  while ((m = re.exec(t))) max = Math.max(max, +(m[1] || m[2]) || 0);
+  if (max) return max;
+  m = t.match(/\/Type\s*\/Page(?![a-zA-Z])/g);
+  return m ? m.length : 0;
 }
 function readB64(f) {
   return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(f); });
@@ -623,9 +675,9 @@ function viewMine() {
   on('mNew', 'click', viewUpload);
   api('listMine', S.token).then(function (list) {
     if (!$('mList')) return;
-    $('mList').innerHTML = list.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>النوع</th><th>الملف</th><th>النسخ</th><th>الحالة</th><th>تاريخ الرفع</th><th>التنفيذ</th></tr></thead><tbody>' +
+    $('mList').innerHTML = list.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>النوع</th><th>الملف</th><th>الأوراق</th><th>النسخ</th><th>إجمالي الأوراق</th><th>الحالة</th><th>تاريخ الرفع</th><th>التنفيذ</th></tr></thead><tbody>' +
       list.map(function (r) {
-        return '<tr><td class="hint">' + esc(r.id) + '</td><td>' + esc(r.typeLabel) + '</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.fileName) + '</td><td class="num">' + fmtN(r.copies) + '</td><td>' + pill(r.status) + '</td><td class="hint">' + esc(r.createdAt) + '</td><td class="hint">' + (r.status === 'تم' ? esc(firstName(r.doneBy)) + ' · ' + esc(r.doneAt) : '—') + '</td></tr>';
+        return '<tr><td class="hint">' + esc(r.id) + '</td><td>' + esc(r.typeLabel) + '</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.fileName) + '</td><td class="num">' + (r.pages ? fmtN(r.pages) : '—') + '</td><td class="num">' + fmtN(r.copies) + '</td><td class="num">' + (r.pages ? '<b>' + fmtN(r.sheets) + '</b>' : '—') + '</td><td>' + pill(r.status) + '</td><td class="hint">' + esc(r.createdAt) + '</td><td class="hint">' + (r.status === 'تم' ? esc(firstName(r.doneBy)) + ' · ' + esc(r.doneAt) : '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty">لا توجد طلبات بعد</div>';
   }).catch(function (e) { if ($('mList')) $('mList').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; });
 }
@@ -657,10 +709,10 @@ function drawQueue() {
   if (!S.q || !$('qList')) return;
   var f = ($('q') && $('q').value.trim()) || '';
   var items = S.q.items.filter(function (r) { return !f || (r.name + ' ' + r.dept + ' ' + r.typeLabel).indexOf(f) >= 0; });
-  $('qList').innerHTML = items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>المعلم</th><th>القسم</th><th>النوع</th><th>النسخ</th><th>ملاحظات</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead><tbody>' +
+  $('qList').innerHTML = items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>المعلم</th><th>القسم</th><th>النوع</th><th>النسخ</th><th>الأوراق</th><th>ملاحظات</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead><tbody>' +
     items.map(function (r) {
       var done = r.status === 'تم';
-      return '<tr><td class="hint">' + esc(r.id) + '</td><td><b>' + esc(firstName(r.name)) + '</b></td><td class="hint">' + esc(r.dept) + '</td><td>' + esc(r.typeLabel) + '</td><td class="num" style="font-size:16px">' + fmtN(r.copies) + '</td>' +
+      return '<tr><td class="hint">' + esc(r.id) + '</td><td><b>' + esc(firstName(r.name)) + '</b></td><td class="hint">' + esc(r.dept) + '</td><td>' + esc(r.typeLabel) + '</td><td class="num" style="font-size:16px">' + fmtN(r.copies) + '</td><td class="num">' + shCell(r) + '</td>' +
         '<td class="hint" style="max-width:180px">' + esc(r.notes || '—') + '</td><td class="hint">' + esc(r.createdAt.slice(5)) + '</td><td>' + pill(r.status) + (done ? '<div class="hint" style="font-size:11px">' + esc(firstName(r.doneBy)) + '</div>' : '') + '</td>' +
         '<td style="white-space:nowrap"><button class="btn soft sm" data-dl="' + esc(r.id) + '">' + I.dl + ' تنزيل</button> ' +
         (done ? '<button class="btn line sm" data-undo="' + esc(r.id) + '">' + I.undo + ' تراجع</button>' : '<button class="btn ok sm" data-done="' + esc(r.id) + '">' + I.check + ' تم</button>') + '</td></tr>';
@@ -689,7 +741,7 @@ function download(id, btn) {
 /* ================= تقارير الطباعة ================= */
 var PERIODS = [['today', 'اليوم'], ['week', 'آخر 7 أيام'], ['month', 'هذا الشهر'], ['year', 'العام الدراسي'], ['all', 'الكل']];
 function viewReport() {
-  page('report', pageHead(A.report, 'تقارير الطباعة', 'عدد النسخ لكل قسم ولكل معلم، والإجمالي على مستوى المدرسة',
+  page('report', pageHead(A.report, 'تقارير الطباعة', 'عدد الأوراق (أوراق الملف × النسخ) لكل معلم ولكل قسم، والإجمالي على مستوى المدرسة',
     '<button class="btn line" id="rCsv">' + I.excel + ' تصدير Excel</button><button class="btn line" id="rPrint">' + I.print + ' طباعة</button>') +
     '<div class="toolbar"><div class="seg" id="rSeg">' + PERIODS.map(function (p) { return '<button data-p="' + p[0] + '" class="' + (S.rp === p[0] ? 'on' : '') + '">' + p[1] + '</button>'; }).join('') + '</div></div>' +
     '<div class="kpis" id="kpis"></div>' +
@@ -709,10 +761,10 @@ function loadReport() {
     if (!$('kpis')) return;
     S.rep = r;
     var t = r.totals;
-    $('kpis').innerHTML = kpi('#e8f1ff', '#1f6fe5', I.copies, fmtN(t.done), 'نسخة مطبوعة (الإجمالي)') +
-      kpi('#fff6e5', '#c98200', I.clock, fmtN(t.wait), 'نسخة بانتظار الطباعة') +
-      kpi('#f3effd', '#7c5ce0', I.mine, fmtN(t.requests), 'عدد الطلبات') +
-      kpi('#e9f8ef', '#1f9d55', I.team, fmtN(t.teachers) + ' <small style="font-size:14px;color:var(--muted)">/ ' + fmtN(t.depts) + ' قسم</small>', 'معلم استخدم الطباعة');
+    $('kpis').innerHTML = kpi('#e8f1ff', '#1f6fe5', I.copies, fmtN(t.sheets), 'إجمالي الأوراق على مستوى المدرسة') +
+      kpi('#e9f8ef', '#1f9d55', I.check, fmtN(t.sheetsDone), 'ورقة مطبوعة · ' + fmtN(t.done) + ' نسخة') +
+      kpi('#fff6e5', '#c98200', I.clock, fmtN(t.sheetsWait), 'ورقة بانتظار الطباعة · ' + fmtN(t.wait) + ' نسخة') +
+      kpi('#f3effd', '#7c5ce0', I.team, fmtN(t.teachers) + ' <small style="font-size:14px;color:var(--muted)">/ ' + fmtN(t.depts) + ' قسم</small>', 'معلم استخدم الطباعة');
     var sel = $('rDept'), cur = sel.value;
     sel.innerHTML = '<option value="">كل الأقسام</option>' + r.byDept.map(function (d) { return '<option' + (d.dept === cur ? ' selected' : '') + '>' + esc(d.dept) + '</option>'; }).join('');
     drawReport();
@@ -734,26 +786,27 @@ function drawReport() {
   $('rFilt').classList.toggle('hidden', S.rtab !== 'teacher');
   var d = reportRows(), rows = d.rows;
   if (!rows.length) { $('rBody').innerHTML = '<div class="empty">لا توجد طلبات في هذه الفترة</div>'; return; }
-  var max = Math.max.apply(null, rows.map(function (x) { return x.o.copies; })) || 1;
-  var sum = rows.reduce(function (a, x) { a.req += x.o.requests; a.done += x.o.done; a.wait += x.o.wait; a.all += x.o.copies; return a; }, { req: 0, done: 0, wait: 0, all: 0 });
-  var schoolAll = S.rep.totals.copies || 1;
-  $('rBody').innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>' + d.label + '</th>' + (S.rtab === 'teacher' ? '<th>القسم</th>' : '') + '<th>الطلبات</th><th>نسخ مطبوعة</th><th>بالانتظار</th><th>إجمالي النسخ</th><th>النسبة من المدرسة</th></tr></thead><tbody>' +
+  var max = Math.max.apply(null, rows.map(function (x) { return x.o.sheets; })) || 1;
+  var sum = rows.reduce(function (a, x) { a.req += x.o.requests; a.all += x.o.copies; a.sh += x.o.sheets; a.shD += x.o.sheetsDone; a.shW += x.o.sheetsWait; a.np += x.o.noPages; return a; }, { req: 0, all: 0, sh: 0, shD: 0, shW: 0, np: 0 });
+  var schoolAll = S.rep.totals.sheets || 1;
+  $('rBody').innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>' + d.label + '</th>' + (S.rtab === 'teacher' ? '<th>القسم</th>' : '') + '<th>الطلبات</th><th>إجمالي النسخ</th><th>أوراق مطبوعة</th><th>أوراق بالانتظار</th><th>إجمالي الأوراق</th><th>النسبة من المدرسة</th></tr></thead><tbody>' +
     rows.map(function (x, i) {
-      var o = x.o, pct = Math.round(o.copies * 1000 / schoolAll) / 10;
+      var o = x.o, pct = Math.round(o.sheets * 1000 / schoolAll) / 10;
       return '<tr><td class="hint">' + (i + 1) + '</td><td><b>' + esc(x.k) + '</b></td>' + (S.rtab === 'teacher' ? '<td class="hint">' + esc(x.sub) + '</td>' : '') +
-        '<td class="num">' + fmtN(o.requests) + '</td><td class="num" style="color:var(--green)">' + fmtN(o.done) + '</td><td class="num" style="color:#c27a00">' + fmtN(o.wait) + '</td><td class="num" style="font-size:16px">' + fmtN(o.copies) + '</td>' +
-        '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:' + Math.max(2, o.copies * 100 / max) + '%"></i></div><span class="hint num" style="min-width:42px">' + pct + '%</span></div></td></tr>';
-    }).join('') + '</tbody><tfoot><tr><td></td><td>الإجمالي</td>' + (S.rtab === 'teacher' ? '<td></td>' : '') + '<td class="num">' + fmtN(sum.req) + '</td><td class="num">' + fmtN(sum.done) + '</td><td class="num">' + fmtN(sum.wait) + '</td><td class="num">' + fmtN(sum.all) + '</td><td></td></tr></tfoot></table></div>' +
-    '<p class="hint" style="margin:10px 2px 0">آخر تحديث: ' + esc(S.rep.generatedAt) + ' · "النسخ" = عدد النسخ المطلوبة في كل طلب.</p>';
+        '<td class="num">' + fmtN(o.requests) + '</td><td class="num">' + fmtN(o.copies) + '</td><td class="num" style="color:var(--green)">' + fmtN(o.sheetsDone) + '</td><td class="num" style="color:#c27a00">' + fmtN(o.sheetsWait) + '</td><td class="num" style="font-size:16px"><b>' + fmtN(o.sheets) + '</b>' + (o.noPages ? '<div class="hint" style="font-size:11px">' + o.noPages + ' طلب بلا عدد أوراق</div>' : '') + '</td>' +
+        '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:' + Math.max(2, o.sheets * 100 / max) + '%"></i></div><span class="hint num" style="min-width:42px">' + pct + '%</span></div></td></tr>';
+    }).join('') + '</tbody><tfoot><tr><td></td><td>الإجمالي</td>' + (S.rtab === 'teacher' ? '<td></td>' : '') + '<td class="num">' + fmtN(sum.req) + '</td><td class="num">' + fmtN(sum.all) + '</td><td class="num">' + fmtN(sum.shD) + '</td><td class="num">' + fmtN(sum.shW) + '</td><td class="num">' + fmtN(sum.sh) + '</td><td></td></tr></tfoot></table></div>' +
+    '<p class="hint" style="margin:10px 2px 0">آخر تحديث: ' + esc(S.rep.generatedAt) + ' · إجمالي الأوراق = عدد أوراق الملف × عدد النسخ لكل طلب.' +
+    (sum.np ? ' · <b style="color:#c27a00">' + sum.np + ' طلب قديم بلا عدد أوراق</b> (من جدول البيانات: قائمة «نظام الطباعة» ← «احتساب عدد الأوراق للطلبات السابقة»).' : '') + '</p>';
 }
 function exportCsv() {
   if (!S.rep) return;
   var d = reportRows(), per = (PERIODS.find(function (p) { return p[0] === S.rp; }) || ['', ''])[1];
   var lines = [[SCHOOL_NAME], ['تقرير الطباعة - ' + d.label + ' - ' + per], []];
-  lines.push([d.label].concat(S.rtab === 'teacher' ? ['القسم'] : []).concat(['الطلبات', 'نسخ مطبوعة', 'بالانتظار', 'إجمالي النسخ']));
-  d.rows.forEach(function (x) { lines.push([x.k].concat(S.rtab === 'teacher' ? [x.sub] : []).concat([x.o.requests, x.o.done, x.o.wait, x.o.copies])); });
+  lines.push([d.label].concat(S.rtab === 'teacher' ? ['القسم'] : []).concat(['الطلبات', 'إجمالي النسخ', 'أوراق مطبوعة', 'أوراق بالانتظار', 'إجمالي الأوراق']));
+  d.rows.forEach(function (x) { lines.push([x.k].concat(S.rtab === 'teacher' ? [x.sub] : []).concat([x.o.requests, x.o.copies, x.o.sheetsDone, x.o.sheetsWait, x.o.sheets])); });
   var t = S.rep.totals;
-  lines.push([]); lines.push(['إجمالي المدرسة'].concat(S.rtab === 'teacher' ? [''] : []).concat([t.requests, t.done, t.wait, t.copies]));
+  lines.push([]); lines.push(['إجمالي المدرسة'].concat(S.rtab === 'teacher' ? [''] : []).concat([t.requests, t.copies, t.sheetsDone, t.sheetsWait, t.sheets]));
   var csv = '﻿' + lines.map(function (l) { return l.map(function (c) { c = String(c == null ? '' : c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\r\n');
   var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   var a = document.createElement('a'); a.href = url; a.download = 'تقرير-الطباعة-' + d.label + '-' + per + '.csv';
